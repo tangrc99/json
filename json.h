@@ -14,14 +14,26 @@
 #include <mutex>
 
 
-class JsonNode;
 
-typedef std::vector<JsonNode> Array;
-typedef std::map<std::string, JsonNode> JsonObject;
+class JsonValue;
 
+typedef std::vector<JsonValue> Array;
+typedef std::map<std::string, JsonValue> JsonObject;
+
+template<class T>
+concept VALID_TYPE = (
+        std::is_same_v<T, int> ||
+        std::is_same_v<T, double> ||
+        std::is_same_v<T, std::string> ||
+        std::is_same_v<T, const char*>   ||
+        std::is_same_v<T, float>    ||
+        std::is_same_v<T,bool>  ||
+        std::is_same_v<T,Array> ||
+        std::is_same_v<T,JsonObject>
+);
 
 class BasicValue {
-    friend JsonNode;
+    friend JsonValue;
 protected:
 
     virtual int getIntValue() = 0;
@@ -44,7 +56,7 @@ public:
     };
 };
 
-template<typename T>
+template<VALID_TYPE T>
 class NodeValue : public BasicValue {
 protected:
     T value;
@@ -170,7 +182,7 @@ public:
 
     Array getArray() override { return value; }
 
-    explicit ArrayValue(const std::vector<JsonNode> &node_value) : NodeValue<std::vector<JsonNode>>(node_value) {}
+    explicit ArrayValue(const std::vector<JsonValue> &node_value) : NodeValue<std::vector<JsonValue>>(node_value) {}
 };
 
 class ObjectValue final : public NodeValue<JsonObject> {
@@ -192,11 +204,11 @@ public:
 
     JsonObject getObject() override { return value; }
 
-    explicit ObjectValue(std::map<std::string, JsonNode> node_value) : NodeValue<JsonObject>(std::move(node_value)) {}
+    explicit ObjectValue(std::map<std::string, JsonValue> node_value) : NodeValue<JsonObject>(std::move(node_value)) {}
 };
 
 
-class JsonNode {
+class JsonValue {
 
 
 private:
@@ -246,19 +258,21 @@ public:
     }
 
 
-    explicit JsonNode(const int &node_value) : _value(std::make_shared<IntValue>(node_value)) {}
+    explicit JsonValue(const int &node_value) : _value(std::make_shared<IntValue>(node_value)) {}
 
-    explicit JsonNode(const double &node_value) : _value(std::make_shared<DoubleValue>(node_value)) {}
+    explicit JsonValue(const double &node_value) : _value(std::make_shared<DoubleValue>(node_value)) {}
 
-    explicit JsonNode(const std::string &node_value) : _value(std::make_shared<StringValue>(node_value)) {}
+    explicit JsonValue(const std::string &node_value) : _value(std::make_shared<StringValue>(node_value)) {}
 
-    explicit JsonNode(const Array &node_value) : _value(std::make_shared<ArrayValue>(node_value)) {}
+    explicit JsonValue(const char* node_value) : _value(std::make_shared<StringValue>(node_value)) {}
 
-    explicit JsonNode(const JsonObject &node_value) : _value(std::make_shared<ObjectValue>(node_value)) {}
+    explicit JsonValue(const Array &node_value) : _value(std::make_shared<ArrayValue>(node_value)) {}
 
-    explicit JsonNode(const bool &node_value) : _value(std::make_shared<BoolenValue>(node_value)) {}
+    explicit JsonValue(const JsonObject &node_value) : _value(std::make_shared<ObjectValue>(node_value)) {}
 
-    explicit JsonNode() : _value(nullptr) {}
+    explicit JsonValue(const bool &node_value) : _value(std::make_shared<BoolenValue>(node_value)) {}
+
+    explicit JsonValue() : _value(nullptr) {}
 
 };
 
@@ -269,7 +283,19 @@ private:
 public:
     explicit JsonBuilder(JsonObject *obj) : object(obj) {}
 
-    bool addValue(const std::string &key, const JsonNode &value) try{
+
+
+    template<VALID_TYPE T>
+    bool addValue(const std::string &key,const T &value){
+        return addValue(key,JsonValue(value));
+    }
+
+    ////const char* 和 const T&的接口不是通用的
+    bool addValue(const std::string &key,const char *value){
+        return addValue(key,JsonValue(value));
+    }
+
+    bool addValue(const std::string &key, const JsonValue &value) try{
         object->emplace(key,value);
 
         return true;
@@ -278,7 +304,7 @@ public:
         return false;
     }
 
-    bool addValue(const std::vector<std::string> &keys, const std::vector<JsonNode> &values) try {
+    bool addValue(const std::vector<std::string> &keys, const std::vector<JsonValue> &values) try {
 
         if (keys.size() != values.size())
             throw std::runtime_error("wrong key-value size");
@@ -286,8 +312,8 @@ public:
         ////首先将这些作为键值对进行创建元素，然后再把 std::map 更新做到异常安全
         JsonObject tmp_object;
         for (int i = 0; i < keys.size(); i++)
-            tmp_object.emplace(std::make_pair(keys[i], values[i]));
-        object->swap(tmp_object);
+            tmp_object.emplace(keys[i], values[i]);
+        object->insert(tmp_object.begin(),tmp_object.end());
 
         return true;
     } catch (std::runtime_error &e) {
@@ -298,28 +324,69 @@ public:
         return false;
     }
 
-////功能函数
-    JsonObject makeObject(const std::map<std::string, JsonNode> &key_values) {
 
+
+////////////修改 json/////////////
+    template<VALID_TYPE T>
+    bool reviseJsonNode(const std::string &key,const T &value){
+        return reviseJsonNode(key,JsonValue(value));
+    }
+
+    bool reviseJsonNode(const std::string &key,const char *value){
+        return reviseJsonNode(key,JsonValue(value));
+    }
+
+    bool reviseJsonNode(const std::string &key,const JsonValue &value)try{
+
+        auto i = object->find(key);
+        if(i == object->end())
+            throw std::runtime_error(" doesn't exist.");
+        i->second = value;
+        return true;
+
+    }catch(std::runtime_error &e){
+        std::cout<<key<<e.what();
+        return false;
+    }
+
+
+///////////删除 json/////////////
+    bool deleteJsonNode(const std::string &key)try {
+        object->erase(key);
+        return true;
+    }catch(...){
+        std::cout<<"Failed to delete";
+        return false;
+    }
+////功能函数
+    static JsonObject makeObject(const std::map<std::string, JsonValue> &key_values) {
+        return key_values;
     }
 
 ////接口函数
-    JsonObject makeObject(const std::vector<std::string> &keys, const std::vector<JsonNode> &values) try {
+    JsonObject makeObject(const std::vector<std::string> &keys, const std::vector<JsonValue> &values) try {
         ////首先需要对输入的值进行检查，
         if (keys.size() != values.size())
             throw std::runtime_error("键值对大小不同");
+
+        JsonObject tmp_object;
+        for (int i = 0; i < keys.size(); i++)
+            tmp_object.emplace(keys[i], values[i]);
+        return tmp_object;
 
     } catch (std::runtime_error &e) {
         std::cerr << e.what();
         return {};
     }
 
-    template<typename T>
-    Array makeArray(std::vector<T> array) {
+    template<VALID_TYPE T>
+    Array makeArray(const std::vector<T> &array) {
         ////这里需要一个 array 中的元素类型相同
-
-        ////把 array 中的数据类型转化为 JsonNode 格式
-
+        std::vector<JsonValue> tmp_array;
+        ////把 array 中的数据类型转化为 JsonValue 格式
+        for(auto i:array)
+            tmp_array.template emplace_back(i);
+        return tmp_array;
     }
 
 };

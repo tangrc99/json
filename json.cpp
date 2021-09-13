@@ -12,7 +12,7 @@ char moveNext(std::string &in_string) {
 }
 
 void removeSpace(std::string &in_string) {
-    while (in_string[0] == ' ') {
+    while (in_string[0] == ' ' || in_string[0] == '\r') {
         moveNext(in_string);
     }
 }
@@ -60,13 +60,13 @@ std::string parseString(std::string &in_string) try {
         return parsed_string;
     }
 } catch (std::runtime_error &e) {
-    std::cout << e.what()  <<std::endl
-              << "remained string : " <<in_string;
+    std::cout << e.what() << std::endl
+              << "remained string : " << in_string;
 
     return {};
 }
 
-JsonNode parseNumber(std::string &in_string) {
+JsonValue parseNumber(std::string &in_string) {
     removeSpace(in_string);
 
     std::string tmp;
@@ -77,17 +77,30 @@ JsonNode parseNumber(std::string &in_string) {
         while (in_string[0] >= '0' && in_string[0] <= '9') {
             tmp += moveNext(in_string);
         }
-        return JsonNode(std::atof(tmp.c_str()));
+        return JsonValue(std::atof(tmp.c_str()));
     }
-    return JsonNode(std::atoi(tmp.c_str()));
+    return JsonValue(std::atoi(tmp.c_str()));
 }
 
-std::map<std::string, JsonNode> parseObject(std::string &in_string);
+JsonValue parseBool(std::string &in_string) {
+    bool is_true = false;
 
-std::vector<JsonNode> parseArray(std::string &in_string) {
+    if (in_string == "TRUE") {
+        is_true = true;
+        moveNext(in_string);
+    }
+    moveNext(in_string);
+    moveNext(in_string);
+    moveNext(in_string);
+    return is_true ? JsonValue(true) : JsonValue(false);
+}
+
+std::map<std::string, JsonValue> parseObject(std::string &in_string);
+
+std::vector<JsonValue> parseArray(std::string &in_string) {
     ////inside an array may be object,number,string or another array.
 
-    std::vector<JsonNode> value;
+    std::vector<JsonValue> value;
 
     moveNext(in_string);
     removeSpace(in_string);
@@ -114,6 +127,8 @@ std::vector<JsonNode> parseArray(std::string &in_string) {
         }
         moveNext(in_string);
 
+    } else if (in_string[0] == 'T' || in_string[0] == 'F') {
+
     } else if (in_string[0] == '[') {
         while (in_string[0] != ']') {
             value.emplace_back(parseArray(in_string));
@@ -126,12 +141,12 @@ std::vector<JsonNode> parseArray(std::string &in_string) {
 }
 
 
-std::map<std::string, JsonNode> parseObject(std::string &in_string) {
+std::map<std::string, JsonValue> parseObject(std::string &in_string) {
     removeSpace(in_string);
     removeComment(in_string);
 
     if (in_string[0] == '{') {
-        std::map<std::string, JsonNode> tmp;
+        std::map<std::string, JsonValue> tmp;
 
         moveNext(in_string);
 
@@ -149,11 +164,14 @@ std::map<std::string, JsonNode> parseObject(std::string &in_string) {
 
 //                std::cout<<value<<std::endl;
 
-                tmp.emplace(key_string, JsonNode(value));
+                tmp.emplace(key_string, JsonValue(value));
 
             } else if (in_string[0] >= '0' && in_string[0] <= '9') {   //// parse number
 
                 tmp.emplace(key_string, parseNumber(in_string));
+
+            } else if (in_string[0] == 'T' || in_string[0] == 'F') {
+                tmp.emplace(key_string, parseBool(in_string));
 
             } else if (in_string[0] == '{') {
 
@@ -180,18 +198,7 @@ std::map<std::string, JsonNode> parseObject(std::string &in_string) {
 }
 
 
-
-
-
-
-
-
-
-
-
-
-
-JsonObject JsonParser::operator()(std::ifstream in_stream) try{
+JsonObject JsonParser::operator()(std::ifstream in_stream) try {
     std::string file_string, tmp;
 
     if (in_stream.is_open()) {
@@ -201,17 +208,17 @@ JsonObject JsonParser::operator()(std::ifstream in_stream) try{
         throw std::runtime_error("Cannot open file!");
 
     return parseObject(file_string);
-}catch(std::runtime_error &e){
-    std::cout<<e.what();
+} catch (std::runtime_error &e) {
+    std::cout << e.what();
     std::abort();
 }
 
-JsonObject JsonParser::operator()(std::string& str, MODE mode) {
-    if(mode == MODE::FILE){
+JsonObject JsonParser::operator()(std::string &str, MODE mode) {
+    if (mode == MODE::FILE) {
         std::ifstream in_stream(str);
         return this->operator()(std::move(in_stream));     ////////这里不确定是不是对的
 
-    }else if(mode == MODE::STRING){
+    } else if (mode == MODE::STRING) {
         return parseObject(str);
     }
 
@@ -220,105 +227,109 @@ JsonObject JsonParser::operator()(std::string& str, MODE mode) {
 using ValueType = BasicValue::ValueType;
 
 
-
 std::string toString(const JsonObject &object);
-void valueToString(JsonNode value,std::string &result);
+
+void valueToString(JsonValue value, std::string &result);
 
 
-void arrayToString(Array array , std::string &result){
+void arrayToString(Array array, std::string &result) {
 
-    result+="[ ";
+    result += "[ ";
 
-    if(array[0].type()==ValueType::OBJECT){
+    if (array[0].type() == ValueType::OBJECT) {
 
-        for(JsonNode i:array){
-            result+=toString(i.getObject());
-            result+=", ";
+        for (JsonValue i: array) {
+            result += toString(i.getObject());
+            result += ", ";
         }
-    }else if(array[0].type() == ValueType::ARRAY){
-        for(JsonNode i:array){
-            arrayToString(i.getArray(),result);
-            result+=", ";
+    } else if (array[0].type() == ValueType::ARRAY) {
+        for (JsonValue i: array) {
+            arrayToString(i.getArray(), result);
+            result += ", ";
         }
-    }else{
-        for(const JsonNode& i:array){
-            valueToString(i,result);
-            result+=", ";
+    } else {
+        for (const JsonValue &i: array) {
+            valueToString(i, result);
+            result += ", ";
         }
     }
     result.erase(result.end() - 2, result.end());
     result += " ]";
 }
 
-void valueToString(JsonNode value,std::string &result){
+void valueToString(JsonValue value, std::string &result) {
 
-    if(value.type() == ValueType::STRING){
-        result+= '\"' + value.getValue() + '\"';
+    if (value.type() == ValueType::STRING) {
+        result += '\"' + value.getValue() + '\"';
 
-    }else if(value.type() == ValueType::INT){
-        result+= std::to_string(value.getValue<int>());
-    }else if(value.type() == ValueType::DOUBLE){
-        result+= std::to_string(value.getValue<double>());
-    }else if(value.type() == ValueType::BOOL){
-        result+= std::to_string(value.getValue<bool>());
-    }else if(value.type() == ValueType::OBJECT){
-        result+=toString(value.getObject());
-    }else if(value.type() == ValueType::ARRAY){
-        arrayToString(value.getArray(),result);
+    } else if (value.type() == ValueType::INT) {
+        result += std::to_string(value.getValue<int>());
+    } else if (value.type() == ValueType::DOUBLE) {
+        result += std::to_string(value.getValue<double>());
+    } else if (value.type() == ValueType::BOOL) {
+        result += value.getValue<bool>() ? "TRUE" : "FALSE";
+    } else if (value.type() == ValueType::OBJECT) {
+        result += toString(value.getObject());
+    } else if (value.type() == ValueType::ARRAY) {
+        arrayToString(value.getArray(), result);
     }
 }
 
 static int loop_flag = 1;
 
-std::string toString(const JsonObject &object){
+std::string toString(const JsonObject &object) {
     std::string result("{ ");
 
-    if(loop_flag==1)
-        result+="\n";
+    if (loop_flag == 1)
+        result += "\n";
 
     --loop_flag;
 
-    for(const auto& i:object){
+    for (const auto &i: object) {
 
-        result+='\"';
-        result+=i.first;
-        result+='\"';
-        result+=": ";
+        result += '\"';
+        result += i.first;
+        result += '\"';
+        result += ": ";
 
 
-        valueToString(i.second,result);
+        valueToString(i.second, result);
         result += ", \n";
 
     }
     ++loop_flag;
 
-    result.erase(result.end()-3,result.end());
-    if(loop_flag==1)
-        result+="\n";
+    result.erase(result.end() - 3, result.end());
+    if (loop_flag == 1)
+        result += "\n";
     result += "}";
     return result;
 }
 
 
-
-
-
-int main(){
-    std::string file_name = R"(C:\Users\trc\Desktop\11.txt)";
-    JsonParser  parser;
+int main() {
+    std::string file_name = "/Users/tangrenchu/Desktop/11.txt";
+    JsonParser parser;
 
     //std::ifstream in_stream(file_name);
 
     //JsonObject p = parser(std::move(in_stream));
     JsonObject p = parser(file_name, JsonParser::FILE);
     JsonBuilder builder(&p);
-    std::string k("111");
-    JsonNode v(1);
-    builder.addValue(k,v);
+    std::vector<std::string> k{"111", "222"};
+    std::vector<JsonValue> v;
+    v.emplace_back(1);
+    v.emplace_back(true);
+    builder.addValue(k, v);
+    builder.addValue("23r", builder.makeObject(k, v));
+    builder.reviseJsonNode("111", "revise");
+    builder.deleteJsonNode("111");
     //std::cout<<p.find("id")->second.getValue<int>();
 
     //p["ww"].getValue();
 
-    std::cout<<toString(p);
+    std::cout << toString(p) << std::endl;
+
+    std::cout << std::to_string(false);
     return 0;
 }

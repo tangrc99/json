@@ -11,7 +11,7 @@ char moveNext(std::string &in_string) {
 }
 
 void removeSpace(std::string &in_string) {
-    while (in_string[0] == ' ') {
+    while (in_string[0] == ' '||in_string[0] == '\r') {
         moveNext(in_string);
     }
 }
@@ -65,7 +65,7 @@ std::string parseString(std::string &in_string) try {
     return {};
 }
 
-JsonNode parseNumber(std::string &in_string) {
+JsonValue parseNumber(std::string &in_string) {
     removeSpace(in_string);
 
     std::string tmp;
@@ -76,17 +76,17 @@ JsonNode parseNumber(std::string &in_string) {
         while (in_string[0] >= '0' && in_string[0] <= '9') {
             tmp += moveNext(in_string);
         }
-        return JsonNode(std::atof(tmp.c_str()));
+        return JsonValue(std::atof(tmp.c_str()));
     }
-    return JsonNode(std::atoi(tmp.c_str()));
+    return JsonValue(std::atoi(tmp.c_str()));
 }
 
-std::map<std::string, JsonNode> parseObject(std::string &in_string);
+std::map<std::string, JsonValue> parseObject(std::string &in_string);
 
-std::vector<JsonNode> parseArray(std::string &in_string) {
+std::vector<JsonValue> parseArray(std::string &in_string) {
     ////inside an array may be object,number,string or another array.
 
-    std::vector<JsonNode> value;
+    std::vector<JsonValue> value;
 
     moveNext(in_string);
     removeSpace(in_string);
@@ -127,12 +127,12 @@ std::vector<JsonNode> parseArray(std::string &in_string) {
 }
 
 
-std::map<std::string, JsonNode> parseObject(std::string &in_string) {
+std::map<std::string, JsonValue> parseObject(std::string &in_string) {
     removeSpace(in_string);
     removeComment(in_string);
 
     if (in_string[0] == '{') {
-        std::map<std::string, JsonNode> tmp;
+        std::map<std::string, JsonValue> tmp;
 
         moveNext(in_string);
 
@@ -150,7 +150,7 @@ std::map<std::string, JsonNode> parseObject(std::string &in_string) {
 
 //                std::cout<<value<<std::endl;
 
-                tmp.emplace(key_string, JsonNode(value));
+                tmp.emplace(key_string, JsonValue(value));
 
             } else if (in_string[0] >= '0' && in_string[0] <= '9') {   //// parse number
 
