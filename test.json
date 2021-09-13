@@ -1,0 +1,11 @@
+{ 
+"bool": false,
+"configurations": [ { "args": "dd", 
+"cwd": "${workspaceFolder}", 
+"name": "(lldb)", 
+"program": "${fileDirname}", 
+"request": "launch", 
+"type": "lldb"} ], 
+"id": 1, 
+"version": "0.2.0"
+}

@@ -12,7 +12,7 @@
 #include <iostream>
 #include <map>
 #include <mutex>
-
+#include <fstream>
 
 
 class JsonValue;
@@ -20,6 +20,7 @@ class JsonValue;
 typedef std::vector<JsonValue> Array;
 typedef std::map<std::string, JsonValue> JsonObject;
 
+//// 定义一组允许被用户端来初始化的类型 ////
 template<class T>
 concept VALID_TYPE = (
         std::is_same_v<T, int> ||
@@ -72,9 +73,9 @@ private:
 
     bool getBoolValue() override { return {}; }
 
-    JsonObject getObject() override {}
+    JsonObject getObject() override {return {};}
 
-    Array getArray() override {}
+    Array getArray() override {return {};}
 
 public:
     int getValueType() override {
@@ -94,11 +95,11 @@ private:
 
     std::string getStringValue() override { return {}; }
 
-    bool getBoolValue() {};
+    bool getBoolValue() override { return {};}
 
-    JsonObject getObject() override {}
+    JsonObject getObject() override {return {};}
 
-    Array getArray() override {}
+    Array getArray() override {return {};}
 
 public:
     int getValueType() override {
@@ -115,15 +116,15 @@ public:
 
 class BoolenValue final : public NodeValue<bool> {
 private:
-    int getIntValue() override {}
+    int getIntValue() override {return {};}
 
-    double getDoubleValue() override {}
+    double getDoubleValue() override {return {};}
 
-    std::string getStringValue() override {}
+    std::string getStringValue() override {return {};}
 
-    JsonObject getObject() override {}
+    JsonObject getObject() override {return {};}
 
-    Array getArray() override {}
+    Array getArray() override {return {};}
 
 public:
     int getValueType() override {
@@ -139,15 +140,15 @@ public:
 
 class StringValue final : public NodeValue<std::string> {
 private:
-    double getDoubleValue() override { return 0; }
+    double getDoubleValue() override { return {}; }
 
-    int getIntValue() override { return 0; }
+    int getIntValue() override { return {}; }
 
-    bool getBoolValue() {};
+    bool getBoolValue() override{return {};}
 
-    JsonObject getObject() override {}
+    JsonObject getObject() override {return {};}
 
-    Array getArray() override {}
+    Array getArray() override {return {};}
 
 public:
     int getValueType() override {
@@ -164,18 +165,17 @@ public:
 
 class ArrayValue final : public NodeValue<Array> {
 private:
-    JsonObject getObject() override {}
+    JsonObject getObject() override {return {};}
 
+    int getIntValue() override{return {};}
+
+    double getDoubleValue() override{return {};}
+
+    std::string getStringValue() override{return {};}
+
+    bool getBoolValue() override{return {};}
 
 public:
-    virtual int getIntValue() {}
-
-    virtual double getDoubleValue() {}
-
-    virtual std::string getStringValue() {}
-
-    bool getBoolValue() {};
-
     int getValueType() override {
         return ARRAY;
     };
@@ -208,11 +208,14 @@ public:
 };
 
 
+
+//// 桥接模式，将六种不同的类型值抽象为一种 ////
+
+class JsonParser;
 class JsonValue {
-
-
+    friend JsonParser;
 private:
-    std::shared_ptr<BasicValue> _value;
+    std::shared_ptr<BasicValue> _value; //利用多态实现一种结点存储多个类型的值
 
 public:
     void getValue(int &value) {
@@ -364,7 +367,7 @@ public:
     }
 
 ////接口函数
-    JsonObject makeObject(const std::vector<std::string> &keys, const std::vector<JsonValue> &values) try {
+    static JsonObject makeObject(const std::vector<std::string> &keys, const std::vector<JsonValue> &values) try {
         ////首先需要对输入的值进行检查，
         if (keys.size() != values.size())
             throw std::runtime_error("键值对大小不同");
@@ -380,7 +383,7 @@ public:
     }
 
     template<VALID_TYPE T>
-    Array makeArray(const std::vector<T> &array) {
+    static Array makeArray(const std::vector<T> &array) {
         ////这里需要一个 array 中的元素类型相同
         std::vector<JsonValue> tmp_array;
         ////把 array 中的数据类型转化为 JsonValue 格式
@@ -394,17 +397,51 @@ public:
 class JsonParser {
 private:
 
+    int is_outer = 1;   //用于确认 toString 的递归层数，从而实现外部 object 的{}换行
+
+    //// 从流、字符串转化为 Json 对象的内部实现 ////
+    static inline char moveNext(std::string &in_string);
+    static inline void removeSpace(std::string &in_string);
+    static inline void removeComment(std::string &in_string);
+    static inline void removeSignal(std::string &in_string);
+    static std::string parseString(std::string &in_string);
+    static JsonValue parseNumber(std::string &in_string);
+    static JsonValue parseBool(std::string &in_string);
+    std::vector<JsonValue> parseArray(std::string &in_string);
+    std::map<std::string, JsonValue> parseObject(std::string &in_string);
+
+    static std::string tryProcessError(std::string &in_string){
+        std::string o_string;
+        while(isalpha(in_string[0])){
+            o_string += moveNext(in_string);
+        }
+        return o_string;
+    }
+
+    //// 将 Json 对象序列化为 std::string 的内部实现 ////
+    void arrayToString(Array array, std::string &result);
+    void valueToString(JsonValue value, std::string &result);
+
+
 
 public:
     enum MODE {
         FILE, STRING
     };
-
+    //// 用户接口，使用（ ）从流、字符串转化为 Json 对象 ////
     JsonObject operator()(std::string &file_name, MODE mode);
 
     JsonObject operator()(std::ifstream in_stream);
 
 
-};
+
+
+    std::string toString(const JsonObject &object) ;
+
+    std::ofstream toFile(const JsonObject &object){
+        return std::ofstream(toString(object));
+    }
+
+    };
 
 #endif //TREE_JSON_H

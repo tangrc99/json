@@ -5,33 +5,40 @@
 #include "json.h"
 #include <fstream>
 
-char moveNext(std::string &in_string) {
+/////////////////////////   string,stream -> Json //////////////////////
+////////////////////////////////////////////////////////////////////////
+
+//// 处理一个字符串，并将当前位置的 char 弹出 ////
+inline char JsonParser::moveNext(std::string &in_string) {
     char pop = in_string[0];
     in_string.assign(in_string.begin() + 1, in_string.end());
     return pop;
 }
 
-void removeSpace(std::string &in_string) {
-    while (in_string[0] == ' ' || in_string[0] == '\r') {
+//// 清除字符串中的空格和回车符 ////
+inline void JsonParser::removeSpace(std::string &in_string) {
+    //// 清除 空格、换行、回车、制表符 ////
+    while (in_string[0] == ' ' || in_string[0] == '\r'||in_string[0] == '\t'||in_string[0] == '\n') {
         moveNext(in_string);
     }
 }
 
-void removeComment(std::string &in_string) {
+//// 清除注释（只支持 /* */格式）////
+inline void JsonParser::removeComment(std::string &in_string) {
     removeSpace(in_string);
     if (in_string[0] == '/') {
-        moveNext(in_string);
+        moveNext(in_string);    //跳出注释的第一个'/'
         if (in_string[0] == '*') {
             while (in_string[0] != '/')
                 moveNext(in_string);
-            moveNext(in_string);
+            moveNext(in_string);    //跳出注释的第二个'/'
         }
     }
     removeSpace(in_string);
 }
 
-//
-void removeSignal(std::string &in_string) {
+//// 清除字符串中的 ','和':' 符号 ////
+inline void JsonParser::removeSignal(std::string &in_string) {
     removeSpace(in_string);
     if (in_string[0] != ',' && in_string[0] != ':')
         return;
@@ -42,8 +49,9 @@ void removeSignal(std::string &in_string) {
 }
 
 
-////忽略前面的空格
-std::string parseString(std::string &in_string) try {
+//// 默认字符串开始是没有空格的 ////
+//// 其他函数保证将空格全部去除 ////
+std::string JsonParser::parseString(std::string &in_string) try {
     removeSpace(in_string);
 
     if (in_string[0] != '\"')
@@ -51,153 +59,144 @@ std::string parseString(std::string &in_string) try {
     else {
         std::string parsed_string;
 
-        moveNext(in_string);
+        moveNext(in_string);    //跳出字符串第一个"符号
+
         while (in_string[0] != '\"')
             parsed_string += moveNext(in_string);
 
-        moveNext(in_string);        ////上面判断字符串结束，但是'\"'符号还没有被解析
+        moveNext(in_string);        //跳出字符串第二个"符号
 
         return parsed_string;
     }
 } catch (std::runtime_error &e) {
-    std::cout << e.what() << std::endl
-              << "remained string : " << in_string;
-
-    return {};
+    std::cerr << e.what() << std::endl
+              << "remained string : " << in_string<<std::endl;
+    return tryProcessError(in_string);
 }
 
-JsonValue parseNumber(std::string &in_string) {
+JsonValue JsonParser::parseNumber(std::string &in_string) {
     removeSpace(in_string);
 
     std::string tmp;
     while (in_string[0] >= '0' && in_string[0] <= '9') {
         tmp += moveNext(in_string);
     }
+
     if (in_string[0] == '.') {
         while (in_string[0] >= '0' && in_string[0] <= '9') {
             tmp += moveNext(in_string);
         }
         return JsonValue(std::atof(tmp.c_str()));
     }
+
     return JsonValue(std::atoi(tmp.c_str()));
 }
 
-JsonValue parseBool(std::string &in_string) {
+//// 字符串开头和结尾都是“”，因此只用分辨 TRUE 和 FALSE ////
+JsonValue JsonParser::parseBool(std::string &in_string) {
     bool is_true = false;
 
-    if (in_string == "TRUE") {
+    if (in_string[0] == 't') {
         is_true = true;
-        moveNext(in_string);
     }
-    moveNext(in_string);
-    moveNext(in_string);
-    moveNext(in_string);
+    in_string.assign(in_string.begin() + 4 + !is_true , in_string.end());
+
     return is_true ? JsonValue(true) : JsonValue(false);
 }
 
-std::map<std::string, JsonValue> parseObject(std::string &in_string);
 
-std::vector<JsonValue> parseArray(std::string &in_string) {
+std::vector<JsonValue> JsonParser::parseArray(std::string &in_string) {
     ////inside an array may be object,number,string or another array.
 
-    std::vector<JsonValue> value;
+    std::vector<JsonValue> value; //为返回值创建临时变量
 
-    moveNext(in_string);
+    moveNext(in_string);    //去除数组前的 '['
     removeSpace(in_string);
 
+    ////在数组还没有结束前，解析同一种类的变量，变量之间是用,隔开的
     if (in_string[0] == '{') {
         while (in_string[0] != ']') {
-            value.emplace_back(parseObject(in_string));
-            removeSignal(in_string);
+            value.emplace_back(parseObject(in_string)); //将一个 value 放入对象
+            removeSignal(in_string);    //去除 value 之间间隔的 ,
         }
-        moveNext(in_string);
-
     } else if (in_string[0] == '\"') {
         while (in_string[0] != ']') {
-
             value.emplace_back(parseString(in_string));
             removeSignal(in_string);
-
         }
-        moveNext(in_string);
     } else if (in_string[0] >= '0' && in_string[0] <= '9') {
         while (in_string[0] != ']') {
             value.emplace_back(parseNumber(in_string));
             removeSignal(in_string);
         }
-        moveNext(in_string);
 
     } else if (in_string[0] == 'T' || in_string[0] == 'F') {
-
+        while (in_string[0] != ']') {
+            value.emplace_back(parseBool(in_string));
+            removeSignal(in_string);
+        }
     } else if (in_string[0] == '[') {
         while (in_string[0] != ']') {
             value.emplace_back(parseArray(in_string));
             removeSignal(in_string);
         }
-        moveNext(in_string);
-
     }
+
+    moveNext(in_string);    //去除数组后的 ']'
     return value;
 }
 
-
-std::map<std::string, JsonValue> parseObject(std::string &in_string) {
+std::map<std::string, JsonValue> JsonParser::parseObject(std::string &in_string) {
     removeSpace(in_string);
     removeComment(in_string);
 
+    //// json 对象是由键值对组成的，分别对 key 和 value 解析
     if (in_string[0] == '{') {
-        std::map<std::string, JsonValue> tmp;
+        std::map<std::string, JsonValue> tmp_object;   //为返回值创建临时变量
 
-        moveNext(in_string);
+        moveNext(in_string);    //去除对象的第一个{
 
         while (in_string[0] != '}') {
 
+            //// 保存 json 对象中的每一个 key ////
             std::string key_string = parseString(in_string);
 
-//            std::cout<<key_string<<std::endl;
+            removeSignal(in_string);    //清除 key:value 中的 :
 
-            removeSignal(in_string);
-
-
+            //// 根据不同格式解析 value ////
             if (in_string[0] == '\"') {
-                std::string value = parseString(in_string);
 
-//                std::cout<<value<<std::endl;
-
-                tmp.emplace(key_string, JsonValue(value));
+                tmp_object.emplace(key_string, parseString(in_string));
 
             } else if (in_string[0] >= '0' && in_string[0] <= '9') {   //// parse number
 
-                tmp.emplace(key_string, parseNumber(in_string));
+                tmp_object.emplace(key_string, parseNumber(in_string));
 
-            } else if (in_string[0] == 'T' || in_string[0] == 'F') {
-                tmp.emplace(key_string, parseBool(in_string));
+            } else if (in_string[0] == 't' || in_string[0] == 'f') {
+
+                tmp_object.emplace(key_string, parseBool(in_string));
 
             } else if (in_string[0] == '{') {
 
-                tmp.emplace(key_string, parseObject(in_string));
+                tmp_object.emplace(key_string, parseObject(in_string));
 
             } else if (in_string[0] == '[') {
-                ////inside an array may be object,number,string.
 
-                tmp.emplace(key_string, parseArray(in_string));
+                tmp_object.emplace(key_string, parseArray(in_string));
+            }else {
 
+                tmp_object.emplace(key_string, tryProcessError(in_string));
             }
-
-
-            removeSignal(in_string);
-
+            removeSignal(in_string);    //每个 key :value 有, 隔开
         }
 
-        moveNext(in_string);
-        removeSpace(in_string);
-        return tmp;
+        moveNext(in_string);    //去除对象的第二个{
+        removeSpace(in_string);     //文件末尾可能会有空格和换行
+        return tmp_object;
     }
-
-
 }
 
-
+//// 用户接口，将 parseObject 函数进行封装 ////
 JsonObject JsonParser::operator()(std::ifstream in_stream) try {
     std::string file_string, tmp;
 
@@ -213,6 +212,7 @@ JsonObject JsonParser::operator()(std::ifstream in_stream) try {
     std::abort();
 }
 
+//// 用户接口，将 parseObject 函数进行封装 ////
 JsonObject JsonParser::operator()(std::string &str, MODE mode) {
     if (mode == MODE::FILE) {
         std::ifstream in_stream(str);
@@ -221,18 +221,18 @@ JsonObject JsonParser::operator()(std::string &str, MODE mode) {
     } else if (mode == MODE::STRING) {
         return parseObject(str);
     }
-
+    return {};
 }
+
+
+/////////////////////////  Json -> string,stream  //////////////////////
+////////////////////////////////////////////////////////////////////////
 
 using ValueType = BasicValue::ValueType;
 
-
-std::string toString(const JsonObject &object);
-
-void valueToString(JsonValue value, std::string &result);
-
-
-void arrayToString(Array array, std::string &result) {
+//// 将 Array 对象序列化为 std::string ////
+//// 由于对用户隐藏接口，因此使用传引用 ////
+void JsonParser::arrayToString( Array array, std::string &result) {
 
     result += "[ ";
 
@@ -257,50 +257,63 @@ void arrayToString(Array array, std::string &result) {
     result += " ]";
 }
 
-void valueToString(JsonValue value, std::string &result) {
+//// 将非递归形式的值序列化为 std::string 的格式 ////
+void JsonParser::valueToString(JsonValue value, std::string &result) {
 
-    if (value.type() == ValueType::STRING) {
-        result += '\"' + value.getValue() + '\"';
+    switch (value.type()) {
+        case ValueType::STRING:
+            result += '\"' + value.getValue() + '\"';
+            return;
 
-    } else if (value.type() == ValueType::INT) {
-        result += std::to_string(value.getValue<int>());
-    } else if (value.type() == ValueType::DOUBLE) {
-        result += std::to_string(value.getValue<double>());
-    } else if (value.type() == ValueType::BOOL) {
-        result += value.getValue<bool>() ? "TRUE" : "FALSE";
-    } else if (value.type() == ValueType::OBJECT) {
-        result += toString(value.getObject());
-    } else if (value.type() == ValueType::ARRAY) {
-        arrayToString(value.getArray(), result);
+        case ValueType::INT:
+            result += std::to_string(value.getValue<int>());
+            return;
+
+        case ValueType::DOUBLE:
+            result += std::to_string(value.getValue<double>());
+            return;
+
+        case ValueType::BOOL:
+            result += value.getValue<bool>() ? "true" : "false";
+            return;
+
+        case ValueType::OBJECT:
+            result += toString(value.getObject());
+            return;
+
+        case ValueType::ARRAY:
+            arrayToString(value.getArray(), result);
+            return;
     }
 }
 
-static int loop_flag = 1;
-
-std::string toString(const JsonObject &object) {
+//// 通过递归，将 JsonObject 对象序列化为 std::string ////
+//// 这是用户接口，因而选择 return value 的格式，方便调用 ////
+std::string JsonParser::toString(const JsonObject &object) {
     std::string result("{ ");
 
-    if (loop_flag == 1)
+    if (is_outer == 1)
         result += "\n";
 
-    --loop_flag;
+    --is_outer; //每次可能进入递归循环时，标志减一
 
     for (const auto &i: object) {
 
-        result += '\"';
+        result += '\"';         // key-value 中的 key
         result += i.first;
         result += '\"';
         result += ": ";
 
+        valueToString(i.second, result);    //key-value 中的 value
 
-        valueToString(i.second, result);
-        result += ", \n";
+        result += ", \n";   //每个 key-value 之间分隔并换行
 
     }
-    ++loop_flag;
+
+    ++is_outer; //每次离开递归循环时，标志加一
 
     result.erase(result.end() - 3, result.end());
-    if (loop_flag == 1)
+    if (is_outer == 1)
         result += "\n";
     result += "}";
     return result;
@@ -308,28 +321,33 @@ std::string toString(const JsonObject &object) {
 
 
 int main() {
-    std::string file_name = "/Users/tangrenchu/Desktop/11.txt";
+    std::string file_name = "/Users/tangrenchu/Desktop/launch.json";
     JsonParser parser;
 
     //std::ifstream in_stream(file_name);
-
     //JsonObject p = parser(std::move(in_stream));
     JsonObject p = parser(file_name, JsonParser::FILE);
-    JsonBuilder builder(&p);
-    std::vector<std::string> k{"111", "222"};
-    std::vector<JsonValue> v;
-    v.emplace_back(1);
-    v.emplace_back(true);
-    builder.addValue(k, v);
-    builder.addValue("23r", builder.makeObject(k, v));
-    builder.reviseJsonNode("111", "revise");
-    builder.deleteJsonNode("111");
+
+//    JsonBuilder builder(&p);
+//    std::vector<std::string> k{"111", "222"};
+//    std::vector<JsonValue> v;
+//    v.emplace_back(1);
+//    v.emplace_back(true);
+//    builder.addValue(k, v);
+//    builder.addValue("23r", JsonBuilder::makeObject(k, v));
+//    builder.reviseJsonNode("111", "revise");
+//    builder.deleteJsonNode("111");
+
+
+
+    std::ofstream os("/Users/tangrenchu/Desktop/test.json");
+    os << parser.toString(p);
+
     //std::cout<<p.find("id")->second.getValue<int>();
 
     //p["ww"].getValue();
 
-    std::cout << toString(p) << std::endl;
+    std::cout << parser.toString(p) << std::endl;
 
-    std::cout << std::to_string(false);
     return 0;
 }
