@@ -26,11 +26,11 @@ concept VALID_TYPE = (
         std::is_same_v<T, int> ||
         std::is_same_v<T, double> ||
         std::is_same_v<T, std::string> ||
-        std::is_same_v<T, const char*>   ||
-        std::is_same_v<T, float>    ||
-        std::is_same_v<T,bool>  ||
-        std::is_same_v<T,Array> ||
-        std::is_same_v<T,JsonObject>
+        std::is_same_v<T, const char *> ||
+        std::is_same_v<T, float> ||
+        std::is_same_v<T, bool> ||
+        std::is_same_v<T, Array> ||
+        std::is_same_v<T, JsonObject>
 );
 
 class BasicValue {
@@ -49,11 +49,13 @@ protected:
 
     virtual Array getArray() = 0;
 
+    virtual std::string getNullValue() = 0;
+
     virtual int getValueType() = 0;
 
 public:
     enum ValueType {
-        INT, DOUBLE, BOOL, STRING, ARRAY, OBJECT
+        INT, DOUBLE, BOOL, STRING, ARRAY, OBJECT, NULL_VALUE
     };
 };
 
@@ -73,9 +75,11 @@ private:
 
     bool getBoolValue() override { return {}; }
 
-    JsonObject getObject() override {return {};}
+    JsonObject getObject() override { return {}; }
 
-    Array getArray() override {return {};}
+    Array getArray() override { return {}; }
+
+    std::string getNullValue() override { return {}; }
 
 public:
     int getValueType() override {
@@ -95,11 +99,13 @@ private:
 
     std::string getStringValue() override { return {}; }
 
-    bool getBoolValue() override { return {};}
+    bool getBoolValue() override { return {}; }
 
-    JsonObject getObject() override {return {};}
+    JsonObject getObject() override { return {}; }
 
-    Array getArray() override {return {};}
+    Array getArray() override { return {}; }
+
+    std::string getNullValue() override { return {}; }
 
 public:
     int getValueType() override {
@@ -116,15 +122,17 @@ public:
 
 class BoolenValue final : public NodeValue<bool> {
 private:
-    int getIntValue() override {return {};}
+    int getIntValue() override { return {}; }
 
-    double getDoubleValue() override {return {};}
+    double getDoubleValue() override { return {}; }
 
-    std::string getStringValue() override {return {};}
+    std::string getStringValue() override { return {}; }
 
-    JsonObject getObject() override {return {};}
+    JsonObject getObject() override { return {}; }
 
-    Array getArray() override {return {};}
+    Array getArray() override { return {}; }
+
+    std::string getNullValue() override { return {}; }
 
 public:
     int getValueType() override {
@@ -144,11 +152,13 @@ private:
 
     int getIntValue() override { return {}; }
 
-    bool getBoolValue() override{return {};}
+    bool getBoolValue() override { return {}; }
 
-    JsonObject getObject() override {return {};}
+    JsonObject getObject() override { return {}; }
 
-    Array getArray() override {return {};}
+    Array getArray() override { return {}; }
+
+    std::string getNullValue() override { return {}; }
 
 public:
     int getValueType() override {
@@ -165,15 +175,17 @@ public:
 
 class ArrayValue final : public NodeValue<Array> {
 private:
-    JsonObject getObject() override {return {};}
+    JsonObject getObject() override { return {}; }
 
-    int getIntValue() override{return {};}
+    int getIntValue() override { return {}; }
 
-    double getDoubleValue() override{return {};}
+    double getDoubleValue() override { return {}; }
 
-    std::string getStringValue() override{return {};}
+    std::string getStringValue() override { return {}; }
 
-    bool getBoolValue() override{return {};}
+    bool getBoolValue() override { return {}; }
+
+    std::string getNullValue() override { return {}; }
 
 public:
     int getValueType() override {
@@ -197,6 +209,8 @@ private:
 
     Array getArray() override { return {}; }
 
+    std::string getNullValue() override { return {}; }
+
 public:
     int getValueType() override {
         return OBJECT;
@@ -207,11 +221,35 @@ public:
     explicit ObjectValue(std::map<std::string, JsonValue> node_value) : NodeValue<JsonObject>(std::move(node_value)) {}
 };
 
+class NullValue final : public NodeValue<std::string> {
+private:
+    JsonObject getObject() override { return {}; }
 
+    int getIntValue() override { return {}; }
+
+    double getDoubleValue() override { return {}; }
+
+    std::string getStringValue() override { return {}; }
+
+    bool getBoolValue() override { return {}; }
+
+    Array getArray() override { return {}; }
+
+public:
+    int getValueType() override {
+        return ValueType::NULL_VALUE;
+    }
+
+    std::string getNullValue() override { return {}; }
+
+    explicit NullValue() : NodeValue<std::string>({}) {}
+
+};
 
 //// 桥接模式，将六种不同的类型值抽象为一种 ////
 
 class JsonParser;
+
 class JsonValue {
     friend JsonParser;
 private:
@@ -267,7 +305,7 @@ public:
 
     explicit JsonValue(const std::string &node_value) : _value(std::make_shared<StringValue>(node_value)) {}
 
-    explicit JsonValue(const char* node_value) : _value(std::make_shared<StringValue>(node_value)) {}
+    explicit JsonValue(const char *node_value) : _value(std::make_shared<StringValue>(node_value)) {}
 
     explicit JsonValue(const Array &node_value) : _value(std::make_shared<ArrayValue>(node_value)) {}
 
@@ -275,7 +313,7 @@ public:
 
     explicit JsonValue(const bool &node_value) : _value(std::make_shared<BoolenValue>(node_value)) {}
 
-    explicit JsonValue() : _value(nullptr) {}
+    explicit JsonValue() : _value(std::make_shared<NullValue>()) {}
 
 };
 
@@ -287,22 +325,21 @@ public:
     explicit JsonBuilder(JsonObject *obj) : object(obj) {}
 
 
-
     template<VALID_TYPE T>
-    bool addValue(const std::string &key,const T &value){
-        return addValue(key,JsonValue(value));
+    bool addValue(const std::string &key, const T &value) {
+        return addValue(key, JsonValue(value));
     }
 
     ////const char* 和 const T&的接口不是通用的
-    bool addValue(const std::string &key,const char *value){
-        return addValue(key,JsonValue(value));
+    bool addValue(const std::string &key, const char *value) {
+        return addValue(key, JsonValue(value));
     }
 
-    bool addValue(const std::string &key, const JsonValue &value) try{
-        object->emplace(key,value);
+    bool addValue(const std::string &key, const JsonValue &value) try {
+        object->emplace(key, value);
 
         return true;
-    }catch(std::bad_alloc &e){
+    } catch (std::bad_alloc &e) {
         std::cout << "Failed to create a json object.";
         return false;
     }
@@ -316,7 +353,7 @@ public:
         JsonObject tmp_object;
         for (int i = 0; i < keys.size(); i++)
             tmp_object.emplace(keys[i], values[i]);
-        object->insert(tmp_object.begin(),tmp_object.end());
+        object->insert(tmp_object.begin(), tmp_object.end());
 
         return true;
     } catch (std::runtime_error &e) {
@@ -328,39 +365,39 @@ public:
     }
 
 
-
 ////////////修改 json/////////////
     template<VALID_TYPE T>
-    bool reviseJsonNode(const std::string &key,const T &value){
-        return reviseJsonNode(key,JsonValue(value));
+    bool reviseJsonNode(const std::string &key, const T &value) {
+        return reviseJsonNode(key, JsonValue(value));
     }
 
-    bool reviseJsonNode(const std::string &key,const char *value){
-        return reviseJsonNode(key,JsonValue(value));
+    bool reviseJsonNode(const std::string &key, const char *value) {
+        return reviseJsonNode(key, JsonValue(value));
     }
 
-    bool reviseJsonNode(const std::string &key,const JsonValue &value)try{
+    bool reviseJsonNode(const std::string &key, const JsonValue &value) try {
 
         auto i = object->find(key);
-        if(i == object->end())
+        if (i == object->end())
             throw std::runtime_error(" doesn't exist.");
         i->second = value;
         return true;
 
-    }catch(std::runtime_error &e){
-        std::cout<<key<<e.what();
+    } catch (std::runtime_error &e) {
+        std::cout << key << e.what();
         return false;
     }
 
 
 ///////////删除 json/////////////
-    bool deleteJsonNode(const std::string &key)try {
+    bool deleteJsonNode(const std::string &key) try {
         object->erase(key);
         return true;
-    }catch(...){
-        std::cout<<"Failed to delete";
+    } catch (...) {
+        std::cout << "Failed to delete";
         return false;
     }
+
 ////功能函数
     static JsonObject makeObject(const std::map<std::string, JsonValue> &key_values) {
         return key_values;
@@ -387,7 +424,7 @@ public:
         ////这里需要一个 array 中的元素类型相同
         std::vector<JsonValue> tmp_array;
         ////把 array 中的数据类型转化为 JsonValue 格式
-        for(auto i:array)
+        for (auto i: array)
             tmp_array.template emplace_back(i);
         return tmp_array;
     }
@@ -397,51 +434,70 @@ public:
 class JsonParser {
 private:
 
+    bool is_started = false;
     int is_outer = 1;   //用于确认 toString 的递归层数，从而实现外部 object 的{}换行
 
     //// 从流、字符串转化为 Json 对象的内部实现 ////
     static inline char moveNext(std::string &in_string);
+
     static inline void removeSpace(std::string &in_string);
+
     static inline void removeComment(std::string &in_string);
+
     static inline void removeSignal(std::string &in_string);
-    static std::string parseString(std::string &in_string);
+
+    static std::string parseString(std::string &in_string) noexcept;
+
     static JsonValue parseNumber(std::string &in_string);
+
     static JsonValue parseBool(std::string &in_string);
+
     std::vector<JsonValue> parseArray(std::string &in_string);
+
     std::map<std::string, JsonValue> parseObject(std::string &in_string);
 
-    static std::string tryProcessError(std::string &in_string){
-        std::string o_string;
-        while(isalpha(in_string[0])){
-            o_string += moveNext(in_string);
+    static std::string tryProcessTypeError(std::string &in_string, const std::string &error_inf) {
+        std::string o_string{};
+
+        if (in_string[0] == ',' || in_string[0] == '}' || in_string[0] == ']' || in_string[0] == ' ')
+            return {};
+        else {
+            std::cerr << error_inf << std::endl
+                      << "Error string : " << in_string.substr(0, in_string.find_first_of('\"') + 1)
+                      << std::endl
+                      << "remained string : " << in_string << std::endl << std::endl;
+            while (isalpha(in_string[0])) {
+                o_string += moveNext(in_string);
+            }
+            if (in_string[0] == '\"')      ////顺序不能改变，否则会破坏下一个键值对
+                moveNext(in_string);
+            return o_string;
         }
-        return o_string;
     }
 
     //// 将 Json 对象序列化为 std::string 的内部实现 ////
     void arrayToString(Array array, std::string &result);
-    void valueToString(JsonValue value, std::string &result);
 
+    void valueToString(JsonValue value, std::string &result);
 
 
 public:
     enum MODE {
         FILE, STRING
     };
+
     //// 用户接口，使用（ ）从流、字符串转化为 Json 对象 ////
     JsonObject operator()(std::string &file_name, MODE mode);
 
     JsonObject operator()(std::ifstream in_stream);
 
 
+    std::string toString(const JsonObject &object);
 
-
-    std::string toString(const JsonObject &object) ;
-
-    std::ofstream toFile(const JsonObject &object){
+    std::ofstream toFile(const JsonObject &object) {
         return std::ofstream(toString(object));
     }
 
-    };
+};
 
 #endif //TREE_JSON_H

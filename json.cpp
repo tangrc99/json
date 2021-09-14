@@ -18,7 +18,7 @@ inline char JsonParser::moveNext(std::string &in_string) {
 //// 清除字符串中的空格和回车符 ////
 inline void JsonParser::removeSpace(std::string &in_string) {
     //// 清除 空格、换行、回车、制表符 ////
-    while (in_string[0] == ' ' || in_string[0] == '\r'||in_string[0] == '\t'||in_string[0] == '\n') {
+    while (in_string[0] == ' ' || in_string[0] == '\r' || in_string[0] == '\t' || in_string[0] == '\n') {
         moveNext(in_string);
     }
 }
@@ -48,34 +48,49 @@ inline void JsonParser::removeSignal(std::string &in_string) {
     removeSpace(in_string);
 }
 
-
 //// 默认字符串开始是没有空格的 ////
 //// 其他函数保证将空格全部去除 ////
-std::string JsonParser::parseString(std::string &in_string) try {
+std::string JsonParser::parseString(std::string &in_string) noexcept try {
     removeSpace(in_string);
 
     if (in_string[0] != '\"')
-        throw std::runtime_error("Not a string value");
+        throw std::runtime_error("ERROR TYPE");
     else {
         std::string parsed_string;
 
         moveNext(in_string);    //跳出字符串第一个"符号
 
-        while (in_string[0] != '\"')
+        //// 这里的异常处理还没有想好，现在的异常处理花费代价稍高 ////
+        //// 并且这里会要求字符串当中不能有 },]等 ////
+        while (in_string[0] != '\"') {
+            if (in_string[0] == ',' || in_string[0] == '}' || in_string[0] == ']' || in_string[0] == ' ' ||
+                in_string[0] == ':')
+                throw std::out_of_range(parsed_string);
             parsed_string += moveNext(in_string);
+        }
 
         moveNext(in_string);        //跳出字符串第二个"符号
 
         return parsed_string;
     }
 } catch (std::runtime_error &e) {
-    std::cerr << e.what() << std::endl
-              << "remained string : " << in_string<<std::endl;
-    return tryProcessError(in_string);
+
+    return tryProcessTypeError(in_string, e.what());
+
+} catch (std::out_of_range &e) {
+    std::cerr << "字符串超出范围" << std::endl
+              << "Error string : " << e.what() << std::endl
+              << "Remained string :" << e.what() << in_string << std::endl << std::endl;
+    return e.what();
 }
 
+
+//// 这里如果数字中间出现了字符没有考虑，也没有考虑科学计数法
 JsonValue JsonParser::parseNumber(std::string &in_string) {
     removeSpace(in_string);
+
+    if (in_string[0] == '0')     //保证数字不以 0 开头
+        moveNext(in_string);
 
     std::string tmp;
     while (in_string[0] >= '0' && in_string[0] <= '9') {
@@ -93,17 +108,80 @@ JsonValue JsonParser::parseNumber(std::string &in_string) {
 }
 
 //// 字符串开头和结尾都是“”，因此只用分辨 TRUE 和 FALSE ////
-JsonValue JsonParser::parseBool(std::string &in_string) {
+
+//// 但是这样可能会出现异常，会多出来一个空的键值对
+JsonValue JsonParser::parseBool(std::string &in_string) try {
     bool is_true = false;
 
     if (in_string[0] == 't') {
         is_true = true;
     }
-    in_string.assign(in_string.begin() + 4 + !is_true , in_string.end());
+
+    in_string.assign(in_string.begin() + 4 + !is_true, in_string.end());
+
+    if (std::isalpha(in_string[0]))
+        throw std::out_of_range(is_true ? "true" : "false");
 
     return is_true ? JsonValue(true) : JsonValue(false);
+
+} catch (std::out_of_range &e) {
+    std::cerr << "ERROR BOOL VALUE :" << e.what() << std::endl
+              << "Remained string :" << in_string << std::endl << std::endl;
+    while (std::isalpha(in_string[0]))
+        moveNext(in_string);
+    return (e.what()[0] == 't') ? JsonValue(true) : JsonValue(false);
 }
 
+//std::vector<JsonValue> JsonParser::parseArray(std::string &in_string) {
+//    ////inside an array may be object,number,string or another array.
+//
+//    std::vector<JsonValue> value; //为返回值创建临时变量
+//
+//    moveNext(in_string);    //去除数组前的 '['
+//    removeSpace(in_string);
+//
+//    ////在数组还没有结束前，解析同一种类的变量，变量之间是用,隔开的
+//    if (in_string[0] == '{') {
+//        while (in_string[0] != ']') {
+//            value.emplace_back(parseObject(in_string)); //将一个 value 放入对象
+//
+//            removeSignal(in_string);    //去除[,,]中的每个,
+//        }
+//    } else if (in_string[0] == '\"') {
+//        while (in_string[0] != ']') {
+//            value.emplace_back(parseString(in_string));
+//            removeSignal(in_string);
+//
+//        }
+//    } else if (in_string[0] >= '0' && in_string[0] <= '9') {
+//        while (in_string[0] != ']') {
+//            value.emplace_back(parseNumber(in_string));
+//            removeSignal(in_string);
+//
+//        }
+//
+//    } else if (in_string[0] == 't' || in_string[0] == 'f') {
+//        while (in_string[0] != ']') {
+//            value.emplace_back(parseBool(in_string));
+//            removeSignal(in_string);
+//
+//        }
+//    } else if (in_string[0] == '[') {
+//        while (in_string[0] != ']') {
+//            value.emplace_back(parseArray(in_string));
+//            removeSignal(in_string);
+//        }
+//    } else {   //// 异常处理，同 parseObject 部分
+//        std::string tmp_value_string = parseString(in_string);
+//        tmp_value_string.empty()?value.emplace_back(JsonValue()):value.emplace_back(parseBool(in_string));
+//
+//        removeSignal(in_string);
+//    }
+//
+//
+//    moveNext(in_string);    //去除数组后的 ']'
+//    return value;
+//}
 
 std::vector<JsonValue> JsonParser::parseArray(std::string &in_string) {
     ////inside an array may be object,number,string or another array.
@@ -114,32 +192,34 @@ std::vector<JsonValue> JsonParser::parseArray(std::string &in_string) {
     removeSpace(in_string);
 
     ////在数组还没有结束前，解析同一种类的变量，变量之间是用,隔开的
-    if (in_string[0] == '{') {
-        while (in_string[0] != ']') {
-            value.emplace_back(parseObject(in_string)); //将一个 value 放入对象
-            removeSignal(in_string);    //去除 value 之间间隔的 ,
-        }
-    } else if (in_string[0] == '\"') {
-        while (in_string[0] != ']') {
-            value.emplace_back(parseString(in_string));
-            removeSignal(in_string);
-        }
-    } else if (in_string[0] >= '0' && in_string[0] <= '9') {
-        while (in_string[0] != ']') {
-            value.emplace_back(parseNumber(in_string));
-            removeSignal(in_string);
-        }
+    while (in_string[0] != ']') {
+        if (in_string[0] == '{') {
 
-    } else if (in_string[0] == 'T' || in_string[0] == 'F') {
-        while (in_string[0] != ']') {
+            value.emplace_back(parseObject(in_string)); //将一个 value 放入对象
+
+        } else if (in_string[0] == '\"') {
+
+            value.emplace_back(parseString(in_string));
+
+        } else if (in_string[0] >= '0' && in_string[0] <= '9') {
+
+            value.emplace_back(parseNumber(in_string));
+
+        } else if (in_string[0] == 't' || in_string[0] == 'f') {
+
             value.emplace_back(parseBool(in_string));
-            removeSignal(in_string);
-        }
-    } else if (in_string[0] == '[') {
-        while (in_string[0] != ']') {
+
+        } else if (in_string[0] == '[') {
+
             value.emplace_back(parseArray(in_string));
-            removeSignal(in_string);
+
+        } else {   //// 异常处理，同 parseObject 部分
+            std::string tmp_value_string = parseString(in_string);
+
+            tmp_value_string.empty() ? value.emplace_back(JsonValue()) : value.emplace_back(parseBool(in_string));
+
         }
+        removeSignal(in_string);    //去除[,,]中间隔的,
     }
 
     moveNext(in_string);    //去除数组后的 ']'
@@ -183,9 +263,11 @@ std::map<std::string, JsonValue> JsonParser::parseObject(std::string &in_string)
             } else if (in_string[0] == '[') {
 
                 tmp_object.emplace(key_string, parseArray(in_string));
-            }else {
+            } else {    //// 异常处理，可能为空值，拼写错误
+                std::string tmp_value_string = parseString(in_string);
 
-                tmp_object.emplace(key_string, tryProcessError(in_string));
+                tmp_value_string.empty() ? tmp_object.emplace(key_string, JsonValue()) : tmp_object.emplace(key_string,
+                                                                                                            tmp_value_string);
             }
             removeSignal(in_string);    //每个 key :value 有, 隔开
         }
@@ -215,8 +297,8 @@ JsonObject JsonParser::operator()(std::ifstream in_stream) try {
 //// 用户接口，将 parseObject 函数进行封装 ////
 JsonObject JsonParser::operator()(std::string &str, MODE mode) {
     if (mode == MODE::FILE) {
-        std::ifstream in_stream(str);
-        return this->operator()(std::move(in_stream));     ////////这里不确定是不是对的
+
+        return this->operator()(std::ifstream(str));     ////////这里不确定是不是对的
 
     } else if (mode == MODE::STRING) {
         return parseObject(str);
@@ -232,7 +314,7 @@ using ValueType = BasicValue::ValueType;
 
 //// 将 Array 对象序列化为 std::string ////
 //// 由于对用户隐藏接口，因此使用传引用 ////
-void JsonParser::arrayToString( Array array, std::string &result) {
+void JsonParser::arrayToString(Array array, std::string &result) {
 
     result += "[ ";
 
@@ -284,6 +366,10 @@ void JsonParser::valueToString(JsonValue value, std::string &result) {
         case ValueType::ARRAY:
             arrayToString(value.getArray(), result);
             return;
+
+        case ValueType::NULL_VALUE:
+            result += ' ';
+            return;
     }
 }
 
@@ -299,10 +385,7 @@ std::string JsonParser::toString(const JsonObject &object) {
 
     for (const auto &i: object) {
 
-        result += '\"';         // key-value 中的 key
-        result += i.first;
-        result += '\"';
-        result += ": ";
+        result += '\"' + i.first + '\"' + ": ";         // key-value 中的 key
 
         valueToString(i.second, result);    //key-value 中的 value
 
@@ -328,16 +411,15 @@ int main() {
     //JsonObject p = parser(std::move(in_stream));
     JsonObject p = parser(file_name, JsonParser::FILE);
 
-//    JsonBuilder builder(&p);
-//    std::vector<std::string> k{"111", "222"};
-//    std::vector<JsonValue> v;
-//    v.emplace_back(1);
-//    v.emplace_back(true);
-//    builder.addValue(k, v);
-//    builder.addValue("23r", JsonBuilder::makeObject(k, v));
-//    builder.reviseJsonNode("111", "revise");
-//    builder.deleteJsonNode("111");
-
+    JsonBuilder builder(&p);
+    std::vector<std::string> k{"111", "222"};
+    std::vector<JsonValue> v;
+    v.emplace_back();
+    v.emplace_back(true);
+    builder.addValue(k, v);
+    builder.addValue("23r", JsonBuilder::makeObject(k, v));
+    builder.reviseJsonNode("111", "revise");
+    builder.deleteJsonNode("111");
 
 
     std::ofstream os("/Users/tangrenchu/Desktop/test.json");
@@ -351,3 +433,4 @@ int main() {
 
     return 0;
 }
+

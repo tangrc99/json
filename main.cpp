@@ -167,7 +167,6 @@ std::map<std::string, JsonValue> parseObject(std::string &in_string) {
 
             }
 
-
             removeSignal(in_string);
 
         }
