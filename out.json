@@ -1,0 +1,14 @@
+{ 
+"222": true, 
+"23r": { "111":  , 
+"222": true}, 
+"bool": false, 
+"configurations": [ { "args": "dd", 
+"array": [ "1", "2", "3" ], 
+"nil":  , 
+"program": "fileDirname", 
+"request": "launch", 
+"type": "lldb"} ], 
+"id": 1, 
+"version": 0.200000
+}
