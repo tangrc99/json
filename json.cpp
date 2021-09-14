@@ -132,56 +132,6 @@ JsonValue JsonParser::parseBool(std::string &in_string) try {
     return (e.what()[0] == 't') ? JsonValue(true) : JsonValue(false);
 }
 
-//std::vector<JsonValue> JsonParser::parseArray(std::string &in_string) {
-//    ////inside an array may be object,number,string or another array.
-//
-//    std::vector<JsonValue> value; //为返回值创建临时变量
-//
-//    moveNext(in_string);    //去除数组前的 '['
-//    removeSpace(in_string);
-//
-//    ////在数组还没有结束前，解析同一种类的变量，变量之间是用,隔开的
-//    if (in_string[0] == '{') {
-//        while (in_string[0] != ']') {
-//            value.emplace_back(parseObject(in_string)); //将一个 value 放入对象
-//
-//            removeSignal(in_string);    //去除[,,]中的每个,
-//        }
-//    } else if (in_string[0] == '\"') {
-//        while (in_string[0] != ']') {
-//            value.emplace_back(parseString(in_string));
-//            removeSignal(in_string);
-//
-//        }
-//    } else if (in_string[0] >= '0' && in_string[0] <= '9') {
-//        while (in_string[0] != ']') {
-//            value.emplace_back(parseNumber(in_string));
-//            removeSignal(in_string);
-//
-//        }
-//
-//    } else if (in_string[0] == 't' || in_string[0] == 'f') {
-//        while (in_string[0] != ']') {
-//            value.emplace_back(parseBool(in_string));
-//            removeSignal(in_string);
-//
-//        }
-//    } else if (in_string[0] == '[') {
-//        while (in_string[0] != ']') {
-//            value.emplace_back(parseArray(in_string));
-//            removeSignal(in_string);
-//        }
-//    } else {   //// 异常处理，同 parseObject 部分
-//        std::string tmp_value_string = parseString(in_string);
-//        tmp_value_string.empty()?value.emplace_back(JsonValue()):value.emplace_back(parseBool(in_string));
-//
-//        removeSignal(in_string);
-//    }
-//
-//
-//    moveNext(in_string);    //去除数组后的 ']'
-//    return value;
-//}
 
 std::vector<JsonValue> JsonParser::parseArray(std::string &in_string) {
     ////inside an array may be object,number,string or another array.
